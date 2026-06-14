@@ -273,18 +273,6 @@ Output load test berisi jumlah client yang berhasil connect, pesan berhasil dan
 gagal, latency minimum/rata-rata/maksimum, throughput pesan per detik, serta file
 hasil `load_test_result_YYYYMMDD_HHMMSS.txt`.
 
-## Alur Demo
-
-1. Jalankan server.
-2. Buka beberapa client GUI dengan username berbeda.
-3. Buat room dari satu client dan bagikan invite code.
-4. Join room dari client lain, lalu kirim broadcast message.
-5. Tunjukkan daftar online user dan friend list.
-6. Kirim private message antar user.
-7. Kirim file kecil dan voice note.
-8. Tambahkan reaction pada bubble chat.
-9. Jalankan `load_test.py` untuk menunjukkan hasil latency dan throughput.
-
 ## Catatan Implementasi
 
 - TLS menggunakan self-signed certificate untuk kebutuhan demo lokal.
