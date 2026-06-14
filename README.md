@@ -1,53 +1,166 @@
 # NgeChat - Multi-Room Chat Application
 
-NgeChat adalah aplikasi multi-room chat berbasis TCP socket untuk Final Project
-Pemrograman Jaringan. Server ditulis dengan Python socket programming murni,
-menggunakan thread per client, protokol JSON dengan length-prefix framing, TLS,
-SQLite persistence, dan GUI desktop PyQt6.
+NgeChat adalah aplikasi chat desktop multi-room berbasis TCP socket. Aplikasi ini
+terdiri dari server Python yang menangani banyak koneksi client secara paralel
+dan client GUI berbasis PyQt6 untuk login, membuat room, bergabung ke room,
+chat publik, private message, kirim file, voice note, reaction, dan pengelolaan
+friend list.
 
-## Fitur
+Komunikasi client-server berjalan di atas TLS lokal dengan payload JSON yang
+dibungkus length-prefix framing. Data seperti user, room, membership, riwayat
+pesan, attachment, reaction, dan friend list disimpan menggunakan SQLite.
 
-### Fitur wajib dari task.pdf
+## Link Penting
 
-- Authentication sederhana: register, login, logout, password di-hash.
-- Online user list: panel `ONLINE USERS` diperbarui saat user login/logout.
-- Room list: panel `ROOMS` menampilkan semua room, termasuk room yang terkunci.
-- Chat history: 50 pesan terakhir room/PM ditampilkan saat join atau membuka chat.
-- Timestamp message: setiap pesan room, PM, file, dan reaction membawa timestamp.
-- Server logging: log console dan file di `logs/server.log`.
+- Laporan:
+[https://docs.google.com/document/d/1b-NyPvA9iN55qMu4jkGtlTZsI1OwZDYLu9ejwYA59ms](https://docs.google.com/document/d/1b-NyPvA9iN55qMu4jkGtlTZsI1OwZDYLu9ejwYA59ms/edit?usp=sharing)
+- Video demo YouTube: TBP
 
-### Ketentuan Multi-Chat Room
+## Fitur Utama
 
-- Mendukung banyak room.
-- Satu room dapat diisi banyak client.
-- Mendukung create room, join room, leave room, broadcast message, dan private
-  message.
-- Menggunakan TCP socket.
-- Menggunakan multithreading: satu `ClientHandler` thread per koneksi.
-- Semua message memakai serialization JSON dengan frame 4-byte length prefix.
+### Autentikasi dan sesi pengguna
 
-### Bonus yang diimplementasikan
+- User dapat melakukan register, login, dan logout.
+- Password disimpan dalam bentuk hash.
+- Satu username hanya dapat login dari satu sesi aktif pada waktu yang sama.
+- Daftar online user diperbarui ketika user login, logout, atau terputus.
 
-- Encryption/TLS: koneksi client-server berjalan di atas TLS self-signed cert.
-- Database message persistence: SQLite menyimpan user, room, member, room
-  messages, private messages, dan friend list.
-- File transfer: kirim file kecil sampai 5 MB ke room atau private chat; penerima
-  bisa memilih Download secara manual seperti aplikasi chat modern.
-- Voice chat sederhana: rekam voice message dari microphone, kirim sebagai WAV,
-  dan penerima bisa menekan Play langsung di bubble chat dengan progress bar.
-- Emoji/reaction: tombol Emoji untuk isi pesan dan klik-kanan pada bubble chat
-  untuk reaction per pesan seperti WhatsApp/Instagram. Reaction bisa diganti atau
-  dibatalkan lewat menu yang sama.
-- Friend system: add friend, accept/decline request, dan friend list online/offline.
-- Load testing script: simulasi banyak client, throughput, dan latency.
+### Multi-room chat
 
-## Struktur Singkat
+- User dapat membuat banyak room chat.
+- Setiap room memiliki invite code yang dapat dibagikan ke user lain.
+- User dapat join room melalui nama room dan invite code atau langsung melalui
+  menu join by invite code.
+- Pesan room dikirim sebagai broadcast ke semua client yang sedang aktif di room
+  tersebut.
+- Room owner dapat menghapus room, sedangkan member dapat keluar dari room.
+
+### Private message dan friend system
+
+- User dapat membuka private chat dengan user online atau friend.
+- Riwayat private message tetap tersimpan sehingga percakapan dapat dibuka
+  kembali.
+- User dapat mengirim friend request, menerima/menolak request, melihat friend
+  list, dan menghapus friend.
+- Status online/offline pada friend list diperbarui dari server.
+
+### Riwayat chat dan persistence
+
+- Server menyimpan riwayat room chat dan private chat di SQLite.
+- Saat user membuka room atau private chat, client mengambil 50 pesan terakhir.
+- Pesan memiliki timestamp dan `message_id` agar attachment dan reaction dapat
+  dikaitkan ke bubble chat yang benar.
+
+### File, voice note, emoji, dan reaction
+
+- User dapat mengirim file ke room atau private chat.
+- File dibatasi sampai 5 MB untuk menjaga ukuran payload JSON tetap aman.
+- File yang diterima dapat disimpan manual melalui tombol download di bubble chat.
+- Voice note direkam dari microphone, dikirim sebagai file WAV, lalu dapat
+  diputar langsung dari GUI.
+- Emoji dapat disisipkan ke pesan.
+- Reaction dapat diberikan pada pesan room atau private chat dan tersinkron ke
+  penerima.
+
+### Logging dan load testing
+
+- Server menulis log ke console dan `logs/server.log`.
+- `load_test.py` tersedia untuk simulasi banyak client, pengukuran latency, dan
+  throughput pesan.
+
+## Arsitektur Aplikasi
+
+NgeChat memakai arsitektur client-server. Server menjadi pusat autentikasi,
+membership room, routing pesan, dan persistence. Client GUI hanya menyimpan state
+tampilan lokal, lalu semua aksi penting dikirim ke server sebagai packet JSON.
+
+```text
+PyQt6 GUI Client
+  |
+  | TLS over TCP
+  | JSON packet + 4-byte length prefix
+  v
+Chat Server
+  |-- ClientHandler thread per client
+  |-- RoomManager untuk state online user dan active room
+  |-- Database untuk SQLite persistence
+  v
+SQLite database + uploads/logs
+```
+
+### Server
+
+Server dijalankan dari `server/server.py`. Komponen utamanya:
+
+- `ChatServer`: membuka socket TCP, memasang TLS, menerima koneksi client, lalu
+  membuat satu thread `ClientHandler` untuk setiap koneksi.
+- `ClientHandler`: membaca packet dari satu client, memvalidasi tipe packet,
+  menjalankan handler sesuai aksi, dan mengirim response/push packet.
+- `RoomManager`: menyimpan state runtime seperti user online, socket aktif,
+  room yang sedang aktif, dan lock pengiriman packet per socket.
+- `Database`: membungkus akses SQLite secara thread-safe, membuat tabel, dan
+  menyimpan user, room, membership, message, attachment, reaction, serta friend
+  relationship.
+- `server/protocol.py`: menyediakan helper framing, JSON serialization,
+  validasi packet, dan builder packet response/push.
+
+Model concurrency server adalah thread per client. Karena beberapa thread dapat
+mengakses database dan socket pada saat yang sama, database dilindungi lock, SQLite
+menggunakan WAL mode, dan pengiriman ke socket memakai lock per user agar packet
+dari beberapa thread tidak saling bercampur.
+
+### Client
+
+Client GUI dijalankan dari `client/gui_main.py`. Komponen utamanya:
+
+- `LoginWindow`: form koneksi, register, dan login.
+- `MainWindow`: tampilan chat utama, daftar room, daftar online user, friend
+  list, chat room, private chat, file transfer, voice note, dan reaction.
+- `NetworkClient`: bridge networking yang berjalan di background thread. Packet
+  dari server diteruskan ke GUI melalui Qt signal supaya update UI tetap aman.
+- `client/protocol.py`: helper framing dan builder packet dari sisi client.
+
+Client tidak melakukan broadcast sendiri. Semua pesan, file, voice note, dan
+reaction dikirim ke server terlebih dahulu, lalu server melakukan routing ke room
+atau user tujuan.
+
+### Protokol komunikasi
+
+Setiap packet memakai format:
+
+```text
+[4-byte big-endian payload length][UTF-8 JSON payload]
+```
+
+Contoh packet dari client:
+
+```json
+{"type":"login","username":"alice","password":"secret"}
+{"type":"create_room","room":"Progjar"}
+{"type":"join_by_code","code":"ABCD1234"}
+{"type":"broadcast","room":"Progjar","message":"Halo!"}
+{"type":"private_message","target":"bob","message":"Ping"}
+{"type":"file_transfer","scope":"room","room":"Progjar","filename":"demo.txt","data":"...base64...","kind":"file"}
+{"type":"reaction","scope":"room","room":"Progjar","message_id":"room-...","emoji":"like"}
+```
+
+Contoh packet dari server:
+
+```json
+{"status":"ok","message":"Login successful."}
+{"type":"room_list","rooms":[{"room_name":"Progjar","created_by":"alice","invite_code":"","is_member":false}]}
+{"type":"user_list","users":["alice","bob"]}
+{"type":"broadcast","room":"Progjar","sender":"alice","message":"Halo!","timestamp":"2026-06-13 10:00:00 UTC","message_id":"room-..."}
+{"type":"history","room":"Progjar","messages":[]}
+```
+
+## Struktur Project
 
 ```text
 server/
   server.py        # TCP/TLS server, ClientHandler, packet dispatch
-  protocol.py      # JSON serialization + packet builders
-  room_manager.py  # online users, room membership, safe push delivery
+  protocol.py      # JSON framing, serialization, validasi packet
+  room_manager.py  # online users, active room membership, push delivery
   database.py      # SQLite persistence
   logger.py        # console/file logging
 client/
@@ -59,8 +172,17 @@ client/
     main_window.py
     dialogs.py
     styles.py
+certs/
+  cert.pem         # self-signed certificate untuk TLS lokal
+  key.pem
+database/
+  chat.db          # SQLite database lokal
+downloads/         # file hasil download dari client
+uploads/           # file/voice note yang diterima server
+logs/
+  server.log
 load_test.py
-generate_cert.py
+requirements.txt
 ```
 
 ## Setup
@@ -69,132 +191,112 @@ Gunakan Python 3.10+.
 
 ```bash
 pip install -r requirements.txt
-python generate_cert.py
 ```
 
-`PyAudio` digunakan untuk merekam microphone pada voice message. Jika instalasi
-PyAudio bermasalah di Windows, gunakan Python yang punya wheel PyAudio tersedia
-atau install PortAudio/OpenSSL tooling sesuai environment.
+`PyAudio` digunakan untuk merekam voice note dari microphone. Jika instalasi
+PyAudio bermasalah di Windows, gunakan versi Python yang memiliki wheel PyAudio
+yang sesuai atau install dependency PortAudio terlebih dahulu.
 
-`generate_cert.py` membutuhkan OpenSSL di PATH. Jika OpenSSL belum tersedia,
-buat manual file berikut:
+File TLS sudah tersedia di folder `certs/`. Jika `certs/cert.pem` atau
+`certs/key.pem` tidak ada, buat self-signed certificate baru, misalnya dengan
+OpenSSL:
 
-```text
-certs/cert.pem
-certs/key.pem
+```bash
+mkdir certs
+openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem -out certs/cert.pem -days 365
 ```
 
 ## Menjalankan Aplikasi
 
-Terminal 1:
+Jalankan server dari terminal pertama:
 
 ```bash
-python server/server.py --debug
+python -m server.server
 ```
 
-Terminal 2 dan seterusnya:
+Mode debug dapat dinyalakan jika ingin log lebih detail:
 
 ```bash
-python client/gui_main.py
+python -m server.server --debug
 ```
 
-Default server adalah `127.0.0.1:9090`. Bisa diubah dari login form atau env:
+Jalankan client GUI dari terminal kedua dan terminal berikutnya:
+
+```bash
+python -m client.gui_main
+```
+
+Default server adalah `127.0.0.1:9090` dari sisi client dan `0.0.0.0:9090` dari
+sisi server. Host dan port bisa diubah dari login form atau environment variable:
 
 ```bash
 set CHAT_HOST=127.0.0.1
 set CHAT_PORT=9090
 ```
 
-## Cara Pakai GUI
+Di PowerShell:
 
-1. Register account, lalu login.
-2. Klik `Add Room` untuk membuat room. Invite code akan muncul setelah room
-   dibuat.
-3. User lain bisa klik room terkunci atau `Join with Invite Code`, lalu memasukkan
-   kode room.
-4. Klik room untuk chat broadcast.
-5. Klik user di `ONLINE USERS` untuk private message.
-6. Gunakan tombol `File` untuk kirim file. File tidak otomatis masuk folder
-   penerima; penerima menekan `Download` di bubble file jika ingin menyimpan.
-7. Gunakan tombol `Voice` untuk merekam voice message. Klik sekali untuk mulai
-   rekam, klik `Stop` untuk mengirim.
-8. Gunakan `Emoji` untuk menyisipkan emoji ke pesan. Untuk memberi reaction,
-   klik-kanan bubble pesan lalu pilih emoji. Pilih emoji yang sama atau
-   `Remove reaction` untuk membatalkan reaction milikmu.
-9. Klik `Leave Room` untuk keluar permanen dari room.
-
-## Desain Protokol
-
-Semua packet:
-
-```text
-[4-byte big-endian payload length][UTF-8 JSON payload]
+```powershell
+$env:CHAT_HOST = "127.0.0.1"
+$env:CHAT_PORT = "9090"
 ```
 
-Contoh packet client ke server:
+## Cara Pakai Singkat
 
-```json
-{"type":"login","username":"alice","password":"secret"}
-{"type":"create_room","room":"Progjar"}
-{"type":"join_room","room":"Progjar","code":"ABCD1234"}
-{"type":"broadcast","room":"Progjar","message":"Halo!"}
-{"type":"private_message","target":"bob","message":"Ping"}
-{"type":"get_users"}
-{"type":"get_rooms"}
-{"type":"file_transfer","scope":"room","room":"Progjar","filename":"demo.txt","data":"...base64...","kind":"file"}
-{"type":"reaction","scope":"room","room":"Progjar","message_id":"room-...","emoji":"👍"}
-```
-
-Contoh packet server ke client:
-
-```json
-{"status":"ok","message":"Login successful."}
-{"type":"room_list","rooms":[{"room_name":"Progjar","created_by":"alice","invite_code":"","is_member":false}]}
-{"type":"user_list","users":["alice","bob"]}
-{"type":"broadcast","room":"Progjar","sender":"alice","message":"Halo!","timestamp":"2026-06-13 10:00:00 UTC","message_id":"room-..."}
-{"type":"history","room":"Progjar","messages":[]}
-```
+1. Jalankan server, lalu buka dua atau lebih client GUI.
+2. Register akun baru, kemudian login.
+3. Buat room melalui tombol `Add Room`, lalu simpan atau bagikan invite code.
+4. Client lain dapat join memakai invite code.
+5. Pilih room untuk mengirim broadcast message.
+6. Pilih user online atau friend untuk membuka private chat.
+7. Gunakan tombol `File`, `Voice`, dan emoji sesuai kebutuhan.
+8. Klik kanan bubble chat untuk memberi atau menghapus reaction.
+9. Gunakan menu friend untuk add friend, menerima request, atau remove friend.
 
 ## Pengujian Beban
 
-Setup room load test:
+Setup room untuk load test:
 
 ```bash
 python load_test.py --setup
 ```
 
-Catat invite code yang muncul, lalu jalankan:
+Catat invite code yang muncul, lalu jalankan simulasi:
 
 ```bash
 python load_test.py --clients 20 --messages 50 --code KODE_ROOM
 ```
 
-Output memuat:
+Output load test berisi jumlah client yang berhasil connect, pesan berhasil dan
+gagal, latency minimum/rata-rata/maksimum, throughput pesan per detik, serta file
+hasil `load_test_result_YYYYMMDD_HHMMSS.txt`.
 
-- jumlah client berhasil connect,
-- pesan berhasil/gagal,
-- latency minimum/rata-rata/maksimum,
-- throughput pesan/detik,
-- file hasil `load_test_result_YYYYMMDD_HHMMSS.txt`.
+## Alur Demo
 
-## Skenario Demo yang Disarankan
-
-1. Jalankan server dengan `--debug`, tunjukkan log.
-2. Buka 3 client GUI dengan username berbeda.
-3. Tunjukkan duplicate login ditolak.
-4. Client 1 create room dan bagikan invite code.
-5. Client 2 dan 3 join room, lalu broadcast message.
-6. Tunjukkan online user list berubah saat client logout/disconnect.
-7. Klik user online untuk private message.
-8. Kirim file kecil dan voice note audio.
-9. Kirim emoji/reaction pada salah satu bubble chat.
-10. Jalankan `load_test.py` dan jelaskan hasil latency/throughput.
+1. Jalankan server.
+2. Buka beberapa client GUI dengan username berbeda.
+3. Buat room dari satu client dan bagikan invite code.
+4. Join room dari client lain, lalu kirim broadcast message.
+5. Tunjukkan daftar online user dan friend list.
+6. Kirim private message antar user.
+7. Kirim file kecil dan voice note.
+8. Tambahkan reaction pada bubble chat.
+9. Jalankan `load_test.py` untuk menunjukkan hasil latency dan throughput.
 
 ## Catatan Implementasi
 
-- Server memakai TLS self-signed agar bonus encryption terpenuhi. Client menerima
-  self-signed cert untuk kebutuhan demo lokal.
-- SQLite memakai WAL mode dan lock Python untuk akses aman dari banyak thread.
-- `RoomManager` memakai lock per socket untuk mencegah packet JSON dari beberapa
-  thread saling bercampur saat broadcast/PM.
-- File transfer dibatasi 5 MB agar aman untuk framing JSON dan demo kelas.
+- TLS menggunakan self-signed certificate untuk kebutuhan demo lokal.
+- Client menerima self-signed certificate dengan `ssl.CERT_NONE`, sehingga setup
+  lokal tidak perlu certificate authority.
+- SQLite memakai WAL mode dan lock Python agar aman dipakai oleh banyak
+  `ClientHandler` thread.
+- Attachment disimpan sebagai metadata di database dan file fisik di `uploads/`.
+- Payload file dikirim sebagai base64 di dalam JSON, sehingga ukuran transfer
+  dibatasi 5 MB.
+
+## Anggota Kelompok
+
+| Name | NRP |
+|------|-----|
+| Hisyam Syafa Raditya | 5025241130 |
+| A. Wildan Kevin Assyauqi | 5025241265 |
