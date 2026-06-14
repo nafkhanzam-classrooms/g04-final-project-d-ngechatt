@@ -14,7 +14,7 @@ pesan, attachment, reaction, dan friend list disimpan menggunakan SQLite.
 
 - Laporan:
 [https://docs.google.com/document/d/1b-NyPvA9iN55qMu4jkGtlTZsI1OwZDYLu9ejwYA59ms](https://docs.google.com/document/d/1b-NyPvA9iN55qMu4jkGtlTZsI1OwZDYLu9ejwYA59ms/edit?usp=sharing)
-- Video demo YouTube: TBP
+- Video demo YouTube: [https://youtu.be/bgiH3aTaeR0](https://youtu.be/bgiH3aTaeR0)
 
 ## Fitur Utama
 
